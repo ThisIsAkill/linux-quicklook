@@ -69,3 +69,7 @@ Debug output: `QT_FORCE_STDERR_LOGGING=1 QT_LOGGING_RULES='quicklook.*=true' qui
 - Local files only (not `sftp:/`, `smb:/`, the trash, …).
 - The panel follows the focused file; with several files selected it does not
   step through only the selection.
+
+## License
+
+GPL-3.0-or-later: see [LICENSE](LICENSE).
