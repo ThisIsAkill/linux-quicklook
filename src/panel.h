@@ -1,5 +1,7 @@
 #pragma once
 
+#include "motion.h"
+
 #include <QPointer>
 #include <QWidget>
 
@@ -12,6 +14,11 @@ class Viewer;
 // with" button) above the file's viewer, sized to the content's shape. It
 // paints its own chrome: a soft shadow, a translucent rounded body and an
 // inset "well" whose tone depends on the content shown.
+//
+// It springs open from its centre, and dismiss() shrinks it away again
+// while the panel itself is already gone (hidden at once, so focus and
+// keys go straight back to the file manager). Switching to another file
+// while open cross-fades the well.
 class Panel : public QWidget
 {
     Q_OBJECT
@@ -27,6 +34,8 @@ public:
     // Shows the panel with path, or switches the visible panel to path.
     void showFile(const QString &path);
     QString currentFile() const { return m_path; }
+    // Hides the panel, leaving its picture to shrink away.
+    void dismiss();
 
 Q_SIGNALS:
     void visibilityChanged(bool visible);
@@ -41,6 +50,7 @@ protected:
 
 private:
     void setupOverlay();
+    void animateOpen();
     void openExternally();
     void fitToContent();
     void updateChips();
@@ -54,4 +64,5 @@ private:
     PillButton *m_open;
     QVBoxLayout *m_layout;
     QPointer<Viewer> m_viewer;
+    Tween m_opening; // 0 → 1 while the panel springs open
 };

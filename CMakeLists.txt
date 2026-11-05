@@ -25,6 +25,7 @@ pkg_check_modules(ARCHIVE REQUIRED IMPORTED_TARGET libarchive)
 # The preview panel and viewers, also used by the Lumen launcher.
 add_library(quicklook-preview STATIC
     src/chrome.cpp
+    src/motion.cpp
     src/panel.cpp
     src/viewers.cpp
 )

@@ -119,7 +119,7 @@ Panel::Panel(Mode mode, QWidget *parent)
     auto *close = new PillButton(PillButton::Ghost, this);
     close->setGlyph(PillButton::Close);
     close->setToolTip(tr("Close (Space)"));
-    connect(close, &QPushButton::clicked, this, &QWidget::hide);
+    connect(close, &QPushButton::clicked, this, &Panel::dismiss);
     connect(m_open, &QPushButton::clicked, this, &Panel::openExternally);
     m_title->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
@@ -138,6 +138,14 @@ Panel::Panel(Mode mode, QWidget *parent)
 
     if (m_mode == Overlay)
         setupOverlay();
+
+    // While opening, the whole panel is drawn through a pose effect; the
+    // effect goes once the panel has settled, so later repaints are direct.
+    m_opening.onStep = [this](qreal t) {
+        if (auto *effect = dynamic_cast<PoseEffect *>(graphicsEffect()))
+            effect->setPose(Motion::appearing(t));
+    };
+    m_opening.onDone = [this] { setGraphicsEffect(nullptr); };
 }
 
 // The panel floats above other windows without taking keyboard focus, so
@@ -166,6 +174,8 @@ void Panel::showFile(const QString &path)
     if (path == m_path && m_viewer && isVisible())
         return;
     m_path = path;
+    // Switching files while open: the old well fades over the new one.
+    FadeOut *fade = isVisible() ? FadeOut::begin(this, wellRect()) : nullptr;
 
     const QFileInfo info(path);
     const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
@@ -190,6 +200,8 @@ void Panel::showFile(const QString &path)
     m_layout->addWidget(m_viewer, 1);
     fitToContent();
     updateChips();
+    if (fade)
+        fade->setGeometry(wellRect()); // the panel may have taken a new shape
     qCDebug(lcPanel) << "showing" << path << "built in" << timer.elapsed() << "ms";
     if (!isVisible()) {
         show();
@@ -197,7 +209,28 @@ void Panel::showFile(const QString &path)
             raise();
             activateWindow();
         }
+        animateOpen();
     }
+}
+
+// The panel springs open from its centre: a little smaller and transparent
+// at first, a touch past full size, then settled.
+void Panel::animateOpen()
+{
+    if (!Motion::enabled())
+        return;
+    setGraphicsEffect(new PoseEffect(this));
+    m_opening.start(0, 1, Motion::Open, QEasingCurve::Linear); // the pose shapes the curve
+}
+
+void Panel::dismiss()
+{
+    if (!isVisible())
+        return;
+    m_opening.stop();
+    setGraphicsEffect(nullptr);
+    Ghost::dismiss(this, rect());
+    hide();
 }
 
 // Kind, then what the viewer knows (dimensions, duration, pages…), then size and date.
@@ -244,7 +277,7 @@ void Panel::openExternally()
         return;
     auto *job = new KIO::OpenUrlJob(QUrl::fromLocalFile(m_path));
     job->start();
-    hide();
+    dismiss();
 }
 
 QRect Panel::bodyRect() const
@@ -326,7 +359,7 @@ void Panel::keyPressEvent(QKeyEvent *event)
     switch (event->key()) {
     case Qt::Key_Space:
     case Qt::Key_Escape:
-        hide();
+        dismiss();
         return;
     case Qt::Key_Right:
     case Qt::Key_Down:

@@ -45,13 +45,13 @@ public:
             if (!m_panel.isVisible())
                 return;
             if (path.isEmpty())
-                m_panel.hide();
+                m_panel.dismiss();
             else
                 m_panel.showFile(path); // follow Dolphin's arrow keys
         });
         connect(&m_space, &GlobalShortcut::pressed, this, [this] {
             if (m_panel.isVisible()) {
-                m_panel.hide();
+                m_panel.dismiss();
                 return;
             }
             const QString path = m_tracker.currentPath();
@@ -60,7 +60,7 @@ public:
             else
                 m_panel.showFile(path);
         });
-        connect(&m_escape, &GlobalShortcut::pressed, &m_panel, &QWidget::hide);
+        connect(&m_escape, &GlobalShortcut::pressed, &m_panel, &Panel::dismiss);
         QTimer::singleShot(0, this, &prewarmViewers);
         connect(&m_panel, &Panel::visibilityChanged, &m_escape, &GlobalShortcut::setEnabled);
     }

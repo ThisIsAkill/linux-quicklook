@@ -20,6 +20,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPlainTextEdit>
+#include <QPaintEvent>
+#include <QTextBlock>
 #include <QProcess>
 #include <QRadialGradient>
 #include <QScrollArea>
@@ -663,6 +665,113 @@ private:
 
 // ------------------------------------------------------------------- text
 
+// Source code: line numbers in a quiet gutter beside highlighted text.
+class CodeEdit : public QPlainTextEdit
+{
+public:
+    explicit CodeEdit(QWidget *parent)
+        : QPlainTextEdit(parent)
+        , m_gutter(new Gutter(this))
+    {
+        connect(this, &QPlainTextEdit::blockCountChanged, this, [this] { fitGutter(); });
+        // Scrolling moves the numbers with the text.
+        connect(this, &QPlainTextEdit::updateRequest, this, [this](const QRect &rect, int dy) {
+            if (dy)
+                m_gutter->scroll(0, dy);
+            else
+                m_gutter->update(0, rect.y(), m_gutter->width(), rect.height());
+        });
+        fitGutter();
+    }
+
+    void setNumbered(bool numbered)
+    {
+        m_numbered = numbered;
+        m_gutter->setVisible(numbered);
+        fitGutter();
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QPlainTextEdit::resizeEvent(event);
+        const QRect r = contentsRect();
+        m_gutter->setGeometry(r.left(), r.top(), gutterWidth(), r.height());
+    }
+
+private:
+    class Gutter : public QWidget
+    {
+    public:
+        explicit Gutter(CodeEdit *edit)
+            : QWidget(edit)
+            , m_edit(edit)
+        {
+        }
+
+    protected:
+        void paintEvent(QPaintEvent *event) override { m_edit->paintGutter(event->rect()); }
+
+    private:
+        CodeEdit *m_edit;
+    };
+
+    int gutterWidth() const
+    {
+        if (!m_numbered)
+            return 0;
+        const int digits = std::max(2, int(QString::number(std::max(1, blockCount())).size()));
+        return GutterPad * 2 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+    }
+
+    void fitGutter()
+    {
+        setViewportMargins(gutterWidth(), 0, 0, 0);
+        const QRect r = contentsRect();
+        m_gutter->setGeometry(r.left(), r.top(), gutterWidth(), r.height());
+    }
+
+    // Right-aligned numbers, faint so the code leads, and a hairline
+    // between them and the text.
+    void paintGutter(const QRect &area)
+    {
+        QPainter p(m_gutter);
+        const QPalette pal = palette();
+        const QColor text = pal.color(QPalette::Text);
+        p.setPen(Chrome::withAlpha(text, 26));
+        p.drawLine(m_gutter->width() - 1, area.top(), m_gutter->width() - 1, area.bottom());
+        QFont numbers = font();
+        numbers.setFeature(QFont::Tag("tnum"), 1); // digits of one width
+        p.setFont(numbers);
+        p.setPen(Chrome::withAlpha(text, Chrome::isDark(pal) ? 85 : 95));
+        QTextBlock block = firstVisibleBlock();
+        int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+        const int lineHeight = fontMetrics().height();
+        while (block.isValid() && top <= area.bottom()) {
+            const int bottom = top + qRound(blockBoundingRect(block).height());
+            if (block.isVisible() && bottom >= area.top())
+                p.drawText(QRect(0, top, m_gutter->width() - GutterPad, lineHeight), Qt::AlignRight | Qt::AlignVCenter,
+                           QString::number(block.blockNumber() + 1));
+            block = block.next();
+            top = bottom;
+        }
+    }
+
+    static constexpr int GutterPad = 12;
+    Gutter *m_gutter;
+    bool m_numbered = false;
+};
+
+// A colour theme for code: Atom One (light or dark), which reads well on the
+// panel's well, or KDE's default when it is not available.
+KSyntaxHighlighting::Theme codeTheme(bool dark)
+{
+    KSyntaxHighlighting::Repository &repository = syntaxRepository();
+    const KSyntaxHighlighting::Theme preferred = repository.theme(dark ? QStringLiteral("Atom One Dark") : QStringLiteral("Atom One Light"));
+    return preferred.isValid() ? preferred
+                               : repository.defaultTheme(dark ? KSyntaxHighlighting::Repository::DarkTheme : KSyntaxHighlighting::Repository::LightTheme);
+}
+
 class TextViewer : public Viewer
 {
 public:
@@ -689,23 +798,26 @@ public:
             return;
         }
 
-        auto *edit = new QPlainTextEdit(this);
+        auto *edit = new CodeEdit(this);
         edit->setReadOnly(true);
         edit->setLineWrapMode(QPlainTextEdit::NoWrap);
         edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-        edit->document()->setDocumentMargin(14);
-        edit->setPlainText(truncated ? text + tr("\n\n… (preview shows the first %1)").arg(QLocale().formattedDataSize(TextLimit))
-                                     : text);
+        edit->setTabStopDistance(edit->fontMetrics().horizontalAdvance(QLatin1Char(' ')) * 4);
+        edit->document()->setDocumentMargin(12);
+        // The newline that ends the last line is not a line of its own.
+        const QString shown = text.endsWith(QLatin1Char('\n')) ? text.chopped(1) : text;
+        edit->setPlainText(truncated ? shown + tr("\n\n… (preview shows the first %1)").arg(QLocale().formattedDataSize(TextLimit))
+                                     : shown);
         bareLayout(this)->addWidget(onWell(edit));
 
         QStringList details;
-        KSyntaxHighlighting::Repository &repository = syntaxRepository();
-        const auto definition = repository.definitionForFileName(path);
-        if (definition.isValid()) {
+        const auto definition = syntaxRepository().definitionForFileName(path);
+        // Code gets colours and line numbers; plain text stays plain.
+        if (definition.isValid() && definition.name() != QLatin1String("None")) {
             auto *highlighter = new KSyntaxHighlighting::SyntaxHighlighter(edit->document());
-            highlighter->setTheme(repository.defaultTheme(Chrome::isDark(palette()) ? KSyntaxHighlighting::Repository::DarkTheme
-                                                                                   : KSyntaxHighlighting::Repository::LightTheme));
+            highlighter->setTheme(codeTheme(Chrome::isDark(palette())));
             highlighter->setDefinition(definition);
+            edit->setNumbered(true);
             details << definition.translatedName();
         }
         const qsizetype lines = text.count(QLatin1Char('\n')) + (text.isEmpty() || text.endsWith(QLatin1Char('\n')) ? 0 : 1);

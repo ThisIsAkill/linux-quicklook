@@ -5,7 +5,9 @@ macOS-style Quick Look for KDE Plasma and Dolphin.
 Select a file in Dolphin and press **Space**: a preview panel floats above
 Dolphin. Dolphin keeps keyboard focus, so the **arrow keys** keep moving
 through your files and the preview follows. **Space** again (or **Esc**)
-closes it. **Open with …** in the panel opens the file in its default app.
+closes it. The panel springs open and shrinks away, following Plasma's
+animation speed setting ("instant" turns that off). **Open with …** in the
+panel opens the file in its default app.
 
 ![Previews in the dark theme](docs/quicklook-dark.png)
 
@@ -17,7 +19,7 @@ closes it. **Open with …** in the panel opens the file in its default app.
 | Video and audio (anything FFmpeg plays; album art for music) | Qt Multimedia |
 | PDF | Poppler |
 | Word, Excel, PowerPoint, OpenDocument, RTF | converted with LibreOffice, if installed |
-| Source code and text (syntax highlighted), Markdown, HTML | KDE syntax highlighting |
+| Source code (syntax highlighted, with line numbers) and text, Markdown, HTML | KDE syntax highlighting |
 | Archives: zip, tar.*, 7z, rar, iso, deb, rpm, … | libarchive (lists the contents) |
 | Fonts | sample text at several sizes |
 | Folders and everything else | KDE thumbnail (e-books, 3D models, … if a thumbnailer exists) or icon, plus kind, size and date |
